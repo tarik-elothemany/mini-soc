@@ -46,7 +46,25 @@ The goal is to design, implement, and document a CI/CD pipeline that deploys a W
 
 ## How to Run Locally and Via CI
 
-*(To be filled out: Instructions for setting up a local Docker Swarm and deploying the stack, as well as triggering the CI/CD pipeline.)*
+### Local Docker Swarm Setup
+
+For local development and testing, a single-node Docker Swarm is sufficient. Your machine will act as both the Swarm manager and a worker node.
+
+1.  **Initialize Swarm on Your Single Machine:**
+    On your machine, identify its IP address (e.g., `192.168.1.10`) and run:
+    ```bash
+    docker swarm init --advertise-addr <IP_OF_YOUR_MACHINE>
+    ```
+    This will initialize the swarm and make your machine the manager. You can ignore the `docker swarm join` command output for a single-node setup.
+
+2.  **Verify Swarm:**
+    Confirm the swarm is initialized and your node is the manager:
+    ```bash
+    docker node ls
+    ```
+    You should see your machine listed with `MANAGER STATUS` as `Leader`.
+
+*(Further instructions for local deployment will be added here later.)*
 
 ---
 
