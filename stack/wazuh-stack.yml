@@ -1,0 +1,97 @@
+# stack/wazuh-stack.yml
+version: '3.8' # Use a recent Compose file format for Swarm features
+
+services:
+  # Wazuh Indexer (OpenSearch)
+  wazuh-indexer:
+    image: opensearchproject/opensearch:2.12.0 # Specify a recent compatible OpenSearch version
+    hostname: wazuh-indexer
+    ports:
+      - "9200:9200" # Expose for external access if needed, e.g., for dev tools or client apps
+      - "9600:9600" # OpenSearch Dashboards port (sometimes used by other tools)
+    environment:
+      # Required for single-node OpenSearch to function
+      - discovery.type=single-node
+      - cluster.name=wazuh-cluster
+      - node.name=wazuh-indexer-node
+      # Set heap size - adjust based on available RAM (e.g., 512m, 1g, 2g)
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      # For development, allowing non-HTTPS/non-xpack connections
+      - plugins.security.disabled=true # Temporarily disable security for simpler initial setup
+    volumes:
+      - wazuh_indexer_data:/usr/share/opensearch/data # Persist indexer data
+    networks:
+      - wazuh_backend_network
+    deploy:
+      replicas: 1 # For a single-node setup, 1 replica is sufficient for now
+      restart_policy:
+        condition: on-failure # Automatically restart if the container fails
+      placement:
+        # For single machine, no specific constraints are strictly needed,
+        # but for multi-node, you might pin to specific nodes.
+        # Here we just allow it to run anywhere.
+        constraints: [node.platform == linux]
+
+
+  # Wazuh Manager
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.7.2 # Specify a recent Wazuh Manager version
+    hostname: wazuh-manager
+    ports:
+      - "1514:1514/tcp" # Agent communication (TCP)
+      - "1514:1514/udp" # Agent communication (UDP)
+      - "55000:55000/tcp" # Remoted for manager-agent communication
+    environment:
+      - WAZUH_INDEXER_URL=https://wazuh-indexer:9200 # Manager connects to indexer
+      # Temporarily disable SSL verification for indexer, will fix later with certs
+      - WAZUH_MANAGER_NODE_NAME=wazuh-manager-node
+      - WAZUH_MANAGER_API_HOST=0.0.0.0
+      # We will handle secrets properly later, for now we assume default credentials or no auth
+    volumes:
+      - wazuh_manager_data:/var/ossec # Persist manager data (agents, rules, etc.)
+    networks:
+      - wazuh_backend_network
+    depends_on:
+      - wazuh-indexer # Ensure indexer starts before manager
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.platform == linux]
+
+
+  # Wazuh Dashboard
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.7.2 # Specify a recent Wazuh Dashboard version
+    hostname: wazuh-dashboard
+    ports:
+      - "443:5601" # Expose dashboard on port 443 (default HTTPS), mapping to internal 5601
+    environment:
+      - WAZUH_INDEXER_URL=https://wazuh-indexer:9200 # Dashboard connects to indexer
+      # For initial setup, we might need to adjust security or certificate handling
+      - OPENSEARCH_HOSTS=["https://wazuh-indexer:9200"] # Direct connection to OpenSearch
+      - DASHBOARD_INDEXER_URL=https://wazuh-indexer:9200 # Redundant but good to have
+      # Temporarily disable SSL verification for indexer, will fix later with certs
+      - SERVER_HOST=0.0.0.0 # Listen on all interfaces
+      - DISABLE_SECURITY_DASHBOARD=true # Temporarily disable security for simpler initial setup
+    networks:
+      - wazuh_backend_network
+    depends_on:
+      - wazuh-indexer # Ensure indexer starts before dashboard
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.platform == linux]
+
+# Define networks for inter-service communication
+networks:
+  wazuh_backend_network:
+    driver: overlay # Overlay network allows communication across swarm nodes (even if only one)
+
+# Define named volumes for data persistence
+volumes:
+  wazuh_indexer_data:
+  wazuh_manager_data:
